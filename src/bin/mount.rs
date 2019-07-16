@@ -15,7 +15,7 @@ use std::io::{Read, Write};
 use std::os::unix::io::{FromRawFd, RawFd};
 use std::process;
 
-use redoxfs::{DiskCache, DiskFile, DiskEncrypted, mount};
+use redoxfs::{Disk, DiskCache, DiskFile, DiskEncrypted, mount};
 use uuid::Uuid;
 
 #[cfg(target_os = "redox")]
@@ -135,6 +135,76 @@ fn daemon(disk_id: &DiskId, mountpoint: &str, mut write: File) -> ! {
 
     for path in paths {
         println!("redoxfs: opening {}", path);
+        match DiskFile::open(&path).map(|image| DiskCache::new(image)) {
+            Ok(disk) => match redoxfs::FileSystem::open(disk) {
+                Ok(filesystem) => {
+                    println!("redoxfs: opened filesystem on {} with uuid {}", path,
+                             Uuid::from_bytes(&filesystem.header.1.uuid).unwrap().hyphenated());
+
+                    let matches = if let Some(uuid) = uuid_opt {
+                        if &filesystem.header.1.uuid == uuid.as_bytes() {
+                            println!("redoxfs: filesystem on {} matches uuid {}", path, uuid.hyphenated());
+                            true
+                        } else {
+                            println!("redoxfs: filesystem on {} does not match uuid {}", path, uuid.hyphenated());
+                            false
+                        }
+                    } else {
+                        true
+                    };
+
+                    if matches {
+                        match mount(filesystem, &mountpoint, || {
+                            println!("redoxfs: mounted filesystem on {} to {}", path, mountpoint);
+                            let _ = write.write(&[0]);
+                        }) {
+                            Ok(()) => {
+                                println!("PROCESS EXIT");
+                                process::exit(0);
+                            },
+                            Err(err) => {
+                                println!("redoxfs: failed to mount {} to {}: {}", path, mountpoint, err);
+                            }
+                        }
+                    }
+                },
+                Err(err) => println!("redoxfs: failed to open filesystem {}: {}", path, err)
+            },
+            Err(err) => println!("redoxfs: failed to open image {}: {}", path, err)
+        }
+    }
+
+    match *disk_id {
+        DiskId::Path(ref path) => {
+            println!("redoxfs: not able to mount path {}", path);
+        },
+        DiskId::Uuid(ref uuid) => {
+            println!("redoxfs: not able to mount uuid {}", uuid.hyphenated());
+        },
+    }
+
+    let _ = write.write(&[1]);
+    process::exit(1);
+}
+
+fn daemon_encr(disk_id: &DiskId, mountpoint: &str, mut write: File) -> ! {
+    setsig();
+
+    let mut paths = vec![];
+    let mut uuid_opt = None;
+
+    match *disk_id {
+        DiskId::Path(ref path) => {
+            paths.push(path.clone());
+        },
+        DiskId::Uuid(ref uuid) => {
+            disk_paths(&mut paths);
+            uuid_opt = Some(uuid.clone());
+        },
+    }
+
+    for path in paths {
+        println!("redoxfs: opening {}", path);
         match DiskEncrypted::open(&path).map(|image| DiskCache::new(image)) {
             Ok(disk) => match redoxfs::FileSystem::open(disk) {
                 Ok(filesystem) => {
@@ -159,6 +229,7 @@ fn daemon(disk_id: &DiskId, mountpoint: &str, mut write: File) -> ! {
                             let _ = write.write(&[0]);
                         }) {
                             Ok(()) => {
+                                println!("PROCESS EXIT");
                                 process::exit(0);
                             },
                             Err(err) => {
@@ -251,6 +322,15 @@ fn main() {
         }
     };
 
+    let encrypted = match args.next() {
+        Some(arg) => if arg == "--encrypted" {
+            true
+        } else {
+            false
+        }
+        _ => false
+    };
+
     let mut pipes = [0; 2];
     if pipe(&mut pipes) == 0 {
         let mut read = unsafe { File::from_raw_fd(pipes[0] as RawFd) };
@@ -260,7 +340,10 @@ fn main() {
         if pid == 0 {
             drop(read);
 
-            daemon(&disk_id, &mountpoint, write);
+            match encrypted {
+                true => daemon_encr(&disk_id, &mountpoint, write),
+                false => daemon(&disk_id, &mountpoint, write)
+            }
         } else if pid > 0 {
             drop(write);
 
