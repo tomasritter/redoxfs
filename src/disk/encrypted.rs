@@ -16,42 +16,40 @@ macro_rules! try_disk {
 }
 
 pub struct DiskEncrypted {
-    pub encr : BlockEncrypt
+    block_encrypt : BlockEncrypt
 }
 
 impl DiskEncrypted {
-    pub fn open(path: &str) -> Result<DiskEncrypted> {
+    pub fn open(path: &str, cipher : &str) -> Result<DiskEncrypted> {
         println!("Open DiskEncrypted {} ", path);
-        let encr = try_disk!(BlockEncrypt::open(path));
+        let block_encrypt = try_disk!(BlockEncrypt::open(path, cipher));
         Ok(DiskEncrypted {
-            encr
+            block_encrypt
         })
     }
 
-    pub fn create(path: &str, size: u64) -> Result<DiskEncrypted> {
+    pub fn create(path: &str, size: u64, cipher : &str) -> Result<DiskEncrypted> {
         println!("Create DiskFile {}", path);
-        let encr = try_disk!(BlockEncrypt::create(path, size));
+        let block_encrypt = try_disk!(BlockEncrypt::create(path, size, cipher));
         Ok(DiskEncrypted {
-            encr
+            block_encrypt
         })
     }
 }
 
 impl Disk for DiskEncrypted {
     fn read_at(&mut self, block: u64, buffer: &mut [u8]) -> Result<usize> {
-        println!("DiskEncypted read at {}", block);
-        let count = try_disk!(self.encr.read_at(block, buffer));
+        let count = try_disk!(self.block_encrypt.read_at(block, buffer));
         Ok(count)
     }
 
     fn write_at(&mut self, block: u64, buffer: &[u8]) -> Result<usize> {
-        println!("DiskEncrypted write at {}", block);
-        let count = try_disk!(self.encr.write_at(block, buffer));
+        let count = try_disk!(self.block_encrypt.write_at(block, buffer));
         Ok(count)
     }
 
     fn size(&mut self) -> Result<u64> {
-        let size = try_disk!(self.encr.size());
+        let size = try_disk!(self.block_encrypt.size());
         Ok(size)
     }
 }

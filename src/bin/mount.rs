@@ -187,7 +187,7 @@ fn daemon(disk_id: &DiskId, mountpoint: &str, mut write: File) -> ! {
     process::exit(1);
 }
 
-fn daemon_encr(disk_id: &DiskId, mountpoint: &str, mut write: File) -> ! {
+fn daemon_encr(disk_id: &DiskId, mountpoint: &str, mut write: File, cipher : &str) -> ! {
     setsig();
 
     let mut paths = vec![];
@@ -205,7 +205,7 @@ fn daemon_encr(disk_id: &DiskId, mountpoint: &str, mut write: File) -> ! {
 
     for path in paths {
         println!("redoxfs: opening {}", path);
-        match DiskEncrypted::open(&path).map(|image| DiskCache::new(image)) {
+        match DiskEncrypted::open(&path, cipher).map(|image| DiskCache::new(image)) {
             Ok(disk) => match redoxfs::FileSystem::open(disk) {
                 Ok(filesystem) => {
                     println!("redoxfs: opened filesystem on {} with uuid {}", path,
@@ -322,15 +322,6 @@ fn main() {
         }
     };
 
-    let encrypted = match args.next() {
-        Some(arg) => if arg == "--encrypted" {
-            true
-        } else {
-            false
-        }
-        _ => false
-    };
-
     let mut pipes = [0; 2];
     if pipe(&mut pipes) == 0 {
         let mut read = unsafe { File::from_raw_fd(pipes[0] as RawFd) };
@@ -340,9 +331,9 @@ fn main() {
         if pid == 0 {
             drop(read);
 
-            match encrypted {
-                true => daemon_encr(&disk_id, &mountpoint, write),
-                false => daemon(&disk_id, &mountpoint, write)
+            match args.next() {
+                Some(arg) => daemon_encr(&disk_id, &mountpoint, write, &arg),
+                None => daemon(&disk_id, &mountpoint, write)
             }
         } else if pid > 0 {
             drop(write);

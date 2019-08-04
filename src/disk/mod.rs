@@ -16,3 +16,4 @@ pub trait Disk {
     fn write_at(&mut self, block: u64, buffer: &[u8]) -> Result<usize>;
     fn size(&mut self) -> Result<u64>;
 }
+

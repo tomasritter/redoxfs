@@ -26,6 +26,11 @@ name = "redoxfs-mkfs"
 path = "src/bin/mkfs.rs"
 doc = false
 
+[[bin]]
+name = "redoxfs-mkfs-enc"
+path = "src/bin/mkfs-enc.rs"
+doc = false
+
 [dependencies]
 redox_syscall = "0.1"
 uuid = { version = "0.5", features = ["v4"] }
